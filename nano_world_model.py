@@ -4,13 +4,13 @@ import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 import gym
 import gym_duckietown
 
 
-def generate_duckietown_dataset(env_name='Duckietown-straight_road-v0', seq_len=50, num_sequences=10):
+def generate_duckietown_dataset(env_name='Duckietown-straight_road-v0', seq_len=50, num_sequences=32):
     env = gym.make(env_name, domain_rand=False)
     obs_dim = (3, 64, 64)
     action_dim = 2
@@ -128,8 +128,10 @@ def train_rssm():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     mse_loss = nn.MSELoss()
 
-    for epoch in range(10):
+    for epoch in tqdm(range(400)):
         total_loss = 0
+        total_los_recon = 0
+        total_loss_kl = 0
         for obs_seq, act_seq in loader:
             model.train()
             decoded, post_mu, prior_mu = model(obs_seq, act_seq)
@@ -141,8 +143,10 @@ def train_rssm():
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+            total_los_recon += recon_loss.item()
+            total_loss_kl += kl_loss.item()
 
-        print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
+        print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}, {total_los_recon:.4f}, {total_loss_kl:.4f}")
 
     return model, obs_data, act_data
 
@@ -151,17 +155,18 @@ def demo():
     test_obs = obs_data[0:1]
     test_act = act_data[0:1]
     model.eval()
-    # with torch.no_grad():
-    #     decoded, _, _ = model(test_obs, test_act)
-    # for t in range(5):
-    #     plt.subplot(2, 5, t + 1)
-    #     plt.imshow(test_obs[0, t].permute(1, 2, 0).numpy())
-    #     plt.axis('off')
-    #     plt.subplot(2, 5, 5 + t + 1)
-    #     plt.imshow(decoded[0, t].permute(1, 2, 0).numpy())
-    #     plt.axis('off')
-    # plt.suptitle("Duckietown Observation Reconstruction")
+    with torch.no_grad():
+        decoded, _, _ = model(test_obs, test_act)
+    for t in range(5):
+        plt.subplot(2, 5, t + 1)
+        plt.imshow(test_obs[0, t].permute(1, 2, 0).numpy())
+        plt.axis('off')
+        plt.subplot(2, 5, 5 + t + 1)
+        plt.imshow(decoded[0, t].permute(1, 2, 0).numpy())
+        plt.axis('off')
+    plt.suptitle("Duckietown Observation Reconstruction")
     # plt.show()
+    plt.savefig("demo_reconstruction.png")  # Save the plot to a file
 
 if __name__ == '__main__':
     demo()
